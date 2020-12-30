@@ -4,10 +4,16 @@ import logging
 import math
 import random
 import re
+import sys
 from base64 import b64decode, b64encode, urlsafe_b64decode, urlsafe_b64encode
 
 # from mitmproxy import ctx
 from mitmproxy import http
+
+try:  # Python 3
+    from urllib.parse import unquote
+except ImportError:  # Python 2
+    from urllib2 import unquote
 
 try:  # Python 3 - pip install pycryptodomex
     # from Crypto.Random import get_random_bytes
@@ -27,6 +33,7 @@ except ImportError:  # Python 2
 BYTE_SIZE = 8
 BYTE_RANGE = 256
 UNCOMPRESS_DICTIONARY = [[ui] for ui in range(0, BYTE_RANGE)]
+IS_PYTHON2 = sys.version_info.major == 2
 
 
 def lzw_decompress(data):
@@ -182,10 +189,21 @@ def isMSLAPI(url):
     return "msl_v1/cadmium" in url or "msl/cadmium" in url or "msl/playapi" in url
 
 
+def isPathEvaluator(url):
+    return "pathEvaluator" in url
+
+
 def request(flow: http.HTTPFlow):
     global MSLAESKey
     if MSLAESKey is None:
         initSession()
+
+    if isPathEvaluator(flow.request.pretty_url):
+        logging.info("Netflix pathEvaluator request: " + flow.request.pretty_url)
+        if IS_PYTHON2:
+            logging.info(unquote(flow.request.content.decode('utf-8')).decode('utf-8'))
+        else:
+            logging.info(unquote(flow.request.content.decode('utf-8')))
 
     if isMSLAPI(flow.request.pretty_url):
         logging.info("Netflix msl request: " + flow.request.pretty_url)
@@ -287,6 +305,14 @@ def response(flow: http.HTTPFlow):
     global MSLAESKey
     global ClientPublicKey
     global ProxyRSAKey
+
+    if isPathEvaluator(flow.request.pretty_url):
+        logging.info("Netflix pathEvaluator response: " + flow.request.pretty_url)
+        if IS_PYTHON2:
+            logging.info(unquote(flow.request.content.decode('utf-8')).decode('utf-8'))
+        else:
+            logging.info(unquote(flow.request.content.decode('utf-8')))
+
     if isMSLAPI(flow.request.pretty_url):
         logging.info("Netflix msl response: " + flow.request.pretty_url)
         parsedResponse = None
